@@ -1,0 +1,137 @@
+---
+title: "Homework_6"
+author: "Arielle"
+date: "11/20/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library (tidyverse)
+library (viridis)
+library (gridExtra)
+library(modelr)
+library(mgcv)
+
+
+knitr::opts_chunk$set(
+	echo = TRUE,
+	warning = FALSE,
+	fig.width = 8, 
+  fig.height = 6,
+  out.width = "90%"
+)
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+
+set.seed(1)
+```
+
+###Problem 1
+
+```{r}
+birthweight = read_csv("data/birthweight.csv")
+```
+
+```{r}
+df_birthweight = 
+birthweight %>% 
+  janitor::clean_names() %>% 
+  mutate( 
+    babysex = factor(babysex,  levels= c("1", "2"),
+                               labels = c("Male", "Female")),
+    frace = factor(frace, levels = c("1", "2", "3","4","8","9"),
+                          labels = c("White", "Black", "Asian","Puerto Rican","Other", "Unknown")),
+    malform = factor(malform, levels = c("0", "1"),
+                              labels = c("absent", "present")),
+    mrace = factor(mrace, levels = c("1", "2", "3","4","8","9"),
+                          labels = c("White", "Black", "Asian","Puerto Rican","Other", "Unknown")))
+
+skimr::skim(df_birthweight)
+```
+
+
+```{r}
+model = lm(bwt ~ fincome + frace, data = df_birthweight) 
+model %>% 
+  broom::tidy() %>% 
+  select(term, estimate, p.value) %>% 
+  knitr::kable(digits = 3)
+
+
+modelr::add_residuals(df_birthweight, model) %>% 
+modelr::add_predictions(model) %>% 
+ggplot(aes(x = pred, y = resid)) +geom_point()
+```
+
+```{r}
+model1 = lm(bwt ~ blength + gaweeks, data = df_birthweight)
+
+model1 %>% 
+  broom::tidy() %>% 
+  select(term, estimate, p.value) %>% 
+  knitr::kable(digits = 3)
+
+model2 = lm(bwt ~ bhead + blength + babysex + bhead*blength + bhead*babysex + blength*babysex + bhead*blength*babysex, data = df_birthweight)
+
+model2 %>% 
+  broom::tidy() %>% 
+  select(term, estimate, p.value) %>% 
+  knitr::kable(digits = 3)
+```
+
+```{r}
+cv_df =
+  crossv_mc(df_birthweight, 100) %>% 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble))
+```
+
+```{r}
+cv_df = 
+  cv_df %>% 
+  mutate(model  = map(train, ~lm(bwt ~ fincome + frace, data = .x)),
+         model1     = map(train, ~lm(bwt ~ blength + gaweeks, data = .x)),
+         model2  = map(train, ~lm(bwt ~ bhead + blength + babysex + bhead*blength + bhead*babysex + blength*babysex + bhead*blength*babysex, data = as_tibble(.x)))) %>% 
+  mutate(rmse_model = map2_dbl(model, test, ~rmse(model = .x, data = .y)),
+         rmse_model1    = map2_dbl(model1, test, ~rmse(model = .x, data = .y)),
+         rmse_model2 = map2_dbl(model2, test, ~rmse(model = .x, data = .y)))
+```
+
+```{r}
+cv_df %>% 
+  select(starts_with("rmse")) %>% 
+pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = rmse)) + geom_violin()
+```
+
+
+###Problem 2
+
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+
+
