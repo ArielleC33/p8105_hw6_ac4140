@@ -2,7 +2,7 @@
 title: "Homework_6"
 author: "Arielle"
 date: "11/20/2019"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
@@ -13,6 +13,7 @@ library (viridis)
 library (gridExtra)
 library(modelr)
 library(mgcv)
+library(patchwork)
 
 
 knitr::opts_chunk$set(
@@ -35,6 +36,8 @@ set.seed(1)
 
 ###Problem 1
 
+First read the data into R using the read csv code. Cleaned and renamed the data and changes the variables that needed to be changed. 
+
 ```{r}
 birthweight = read_csv("data/birthweight.csv")
 ```
@@ -56,6 +59,7 @@ birthweight %>%
 skimr::skim(df_birthweight)
 ```
 
+Created a model that included family income as well as father's race and see if there was realtionship with baby birthweight.
 
 ```{r}
 model = lm(bwt ~ fincome + frace, data = df_birthweight) 
@@ -69,6 +73,8 @@ modelr::add_residuals(df_birthweight, model) %>%
 modelr::add_predictions(model) %>% 
 ggplot(aes(x = pred, y = resid)) +geom_point()
 ```
+
+The next thing I did was run the two comparison models that were given in the homework. 
 
 ```{r}
 model1 = lm(bwt ~ blength + gaweeks, data = df_birthweight)
@@ -85,6 +91,8 @@ model2 %>%
   select(term, estimate, p.value) %>% 
   knitr::kable(digits = 3)
 ```
+
+Below is the code for the cross- validation step to look at the three models together. 
 
 ```{r}
 cv_df =
@@ -117,6 +125,7 @@ pivot_longer(
   ggplot(aes(x = model, y = rmse)) + geom_violin()
 ```
 
+The model2 is the best model to use out of theses three models. 
 
 ###Problem 2
 
@@ -134,4 +143,60 @@ weather_df =
   select(name, id, everything())
 ```
 
+ Entered in the dataset for problem two from the course website. Below Is the code that worked with the bootstrapping. Bootstrapped a total of 5000, and set up the data in order to find the disrtibutions. 
 
+```{r}
+boots_df = weather_df %>% 
+  modelr::bootstrap(n = 5000) %>% 
+  mutate(
+    models = map(strap, ~ lm(tmax ~ tmin, data = .x)),
+    results = map(models, broom::tidy),
+    glance = map(models, broom::glance)) %>% 
+  select(results, glance, .id) %>% 
+  unnest(results) %>% 
+  pivot_wider( 
+    names_from = term,
+    values_from = c(estimate, std.error, glance),
+    id_cols = .id) %>%
+  janitor::clean_names() %>%
+  unnest(c(glance_intercept), .names_repair = "universal") %>% 
+  mutate(
+    log_b0_b1 = log(estimate_intercept * estimate_tmin)
+  ) 
+```
+
+Next ran a ggplot to see the distributions of the r-squared as well as the log bo_b1, To ssee if they were normal distributed or not. 
+
+```{r}
+plot1 = boots_df %>% 
+  ggplot(aes(x = r.squared)) + 
+  geom_histogram() + 
+  geom_density() +
+  theme_minimal() 
+
+plot2 = boots_df %>% 
+  ggplot(aes(x = log_b0_b1)) + 
+  geom_histogram() + 
+  geom_density() +
+  theme_minimal() 
+
+plot1 + plot2
+```
+
+Both the r-squared as well as the log_bo_b1 plot seem to be normally distributed. 
+
+Used the boot strap 5000, to produced the quantiles for both the r-squared and the log_bo_b1 to get the 95% confidence interval for both. 
+
+```{r}
+boots_df %>% 
+  pull(r.squared) %>% 
+  quantile(c(0.025, 0.975)) %>% 
+  knitr::kable(col.names = "R-Squared")
+
+boots_df %>% 
+  pull(log_b0_b1) %>% 
+  quantile(c(0.025, 0.975)) %>% 
+  knitr::kable(col.names = "Log(B0*B1)")
+```
+
+The 95% confidence interavl for the r-squared is 0.894 - 0.927 and the 95% confidence interavl for the log_b0_b1 is 1.966 - 2.058.
